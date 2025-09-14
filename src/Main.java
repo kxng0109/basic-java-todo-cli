@@ -6,7 +6,7 @@ import java.util.Scanner;
 public class Main {
 	public static void main(String[] args){
 		Scanner scanner = new Scanner(System.in);
-		ArrayList<String> tasks = new ArrayList<>();
+		ArrayList<Task> tasks = new ArrayList<>();
 		boolean isRunning = true;
 
 		File file = new File("tasks.txt");
@@ -16,10 +16,13 @@ public class Main {
 				String line;
 				while ((line = bufferedReader.readLine()) != null){
 					line = line.trim();
-					if (!line.isEmpty()) tasks.add(line);
+					if (line.isEmpty()) continue;
+
+					Task task = Task.fromFileString(line);
+					if(task != null) tasks.add(task);
 				}
 			} catch (IOException e) {
-				System.out.println("An error occurred saving the task: " + e.getMessage());
+				System.out.println("An error occurred while reading the file: " + e.getMessage());
 			}
 		}
 
@@ -32,8 +35,8 @@ public class Main {
 				System.out.println();
 
 				switch (userSelection){
-					case 1 -> addTask(scanner, tasks, file);
-					case 2 -> listTasks(tasks);
+					case 1 -> listTasks(tasks);
+					case 2 -> addTask(scanner, tasks, file);
 					case 3 -> markComplete(scanner, tasks, file);
 					case 4 -> removeTask(scanner, tasks, file);
 					case 5 -> {
@@ -54,36 +57,15 @@ public class Main {
 
 	static void printMenu(){
 		System.out.println("\nWelcome to a basic To-Do CLI. What do you want to do?");
-		System.out.println("1. Add task");
-		System.out.println("2. List tasks");
+		System.out.println("1. List tasks");
+		System.out.println("2. Add task");
 		System.out.println("3. Complete task");
 		System.out.println("4. Remove task");
 		System.out.println("5. Exit/Quit");
 		System.out.print("Select an option (1-5): ");
 	}
 
-	static void addTask(Scanner scanner, ArrayList<String> tasks, File file){
-		System.out.print("Enter the task you want to add to your To-Do list?: ");
-		String task = scanner.nextLine().trim();
-
-		if (task.isEmpty()){
-			System.out.println("No input received. Nothing added.");
-			return;
-		}
-
-		tasks.add(task);
-
-		//Wanted to only save on exit, but why not save on every change 🤷🏾‍♂️
-		try(BufferedWriter bufferedWriter = new BufferedWriter(new FileWriter(file, true))){
-			bufferedWriter.write(task);
-			bufferedWriter.newLine();
-			System.out.println("Task added!");
-		} catch (IOException e){
-			System.out.println("An error occurred saving the task: " + e.getMessage());
-		}
-	}
-
-	static void listTasks(ArrayList<String> tasks){
+	static void listTasks(ArrayList<Task> tasks){
 		if (tasks.isEmpty()) {
 			System.out.println("You have no tasks!");
 			return;
@@ -91,20 +73,44 @@ public class Main {
 
 		System.out.println("\nList of tasks saved:");
 		for (int i = 0; i < tasks.size(); i++) {
-			System.out.printf("%d. %s\n", i + 1, tasks.get(i));
+			Task task = tasks.get(i);
+			if(task.getCompleted()){
+				System.out.printf("[x] %d. %s\n", i + 1, task.getDescription());
+			} else{
+				System.out.printf("[ ] %d. %s\n", i + 1, task.getDescription());
+			}
 		}
 	}
 
-	static void markComplete(Scanner scanner, ArrayList<String> tasks, File file){
+	static void addTask(Scanner scanner, ArrayList<Task> tasks, File file){
+		System.out.print("Enter the task you want to add to your To-Do list?: ");
+		String taskDescription = scanner.nextLine().trim();
+		if (taskDescription.isEmpty()){
+			System.out.println("No input received. Nothing added.");
+			return;
+		}
+
+		Task task = new Task(taskDescription);
+		tasks.add(task);
+
+		//Wanted to only save on exit, but why not save on every change 🤷🏾‍♂️
+		try(BufferedWriter bufferedWriter = new BufferedWriter(new FileWriter(file, true))){
+			bufferedWriter.write(task.toFileString());
+			bufferedWriter.newLine();
+			System.out.println("\nTask added!");
+		} catch (IOException e){
+			System.out.println("An error occurred saving the task: " + e.getMessage());
+		}
+	}
+
+	static void markComplete(Scanner scanner, ArrayList<Task> tasks, File file){
 		if(tasks.isEmpty()){
 			System.out.println("No tasks to complete.");
 			return;
 		}
 
 		System.out.printf("Enter the task number to mark as complete (1-%d): ", tasks.size());
-
 		int userIndex;
-
 		try{
 			 userIndex = scanner.nextInt();
 			 scanner.nextLine();
@@ -115,30 +121,27 @@ public class Main {
 		}
 
 		int realIndex = userIndex - 1;
-
 		if(realIndex >= tasks.size() || realIndex < 0){
 			System.out.printf("Invalid input! Enter the correct index (1-%d).\n", tasks.size());
 			return;
 		}
 
-		//Remove the task in memory
-		tasks.remove(realIndex);
-		System.out.println("Task marked as complete.");
+		Task task = tasks.get(realIndex);
+		task.setCompleted();
+		System.out.println("\nTask marked as complete.");
 
 		//Then overwrite the file with the new tasks in memory
 		saveAllTasks(tasks, file);
 	}
 
-	static void removeTask(Scanner scanner, ArrayList<String> tasks, File file){
+	static void removeTask(Scanner scanner, ArrayList<Task> tasks, File file){
 		if(tasks.isEmpty()){
 			System.out.println("No tasks to remove.");
 			return;
 		}
 
 		System.out.printf("Enter the index of the task (1-%d) you want to remove: ", tasks.size());
-
 		int userIndex;
-
 		try{
 			userIndex = scanner.nextInt();
 			scanner.nextLine();
@@ -149,7 +152,6 @@ public class Main {
 		}
 
 		int realIndex = userIndex - 1;
-
 		if(realIndex >= tasks.size() || realIndex < 0){
 			System.out.printf("Invalid input! Enter the correct index (1-%d).\n", tasks.size());
 			return;
@@ -157,17 +159,17 @@ public class Main {
 
 		//Remove the task in memory
 		tasks.remove(realIndex);
-		System.out.println("Task removed.");
+		System.out.println("\nTask removed.");
 
 		//Then overwrite the file with the new tasks in memory
 		saveAllTasks(tasks, file);
 	}
 
 	//Save all tasks to the txt file
-	static void saveAllTasks(ArrayList<String> tasks, File file){
+	static void saveAllTasks(ArrayList<Task> tasks, File file){
 		try(BufferedWriter bufferedWriter = new BufferedWriter(new FileWriter(file))){
-			for(String task : tasks){
-				bufferedWriter.write(task);
+			for(Task task : tasks){
+				bufferedWriter.write(task.toFileString());
 				bufferedWriter.newLine();
 			}
 		}catch(IOException e){
